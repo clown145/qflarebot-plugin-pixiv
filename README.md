@@ -21,7 +21,7 @@ v1.5.0 起 `random` / `illust` 声明成子命令（`'pixiv random'`、`'pixiv i
 | `show_image_info` | bool | `true` | 随机图片是否附带作品信息（标题、作者、标签） |
 | `default_image_size` | enum | `regular` | 随机图片默认尺寸 |
 | `max_image_mb` | number | `20` | 单张图片体积上限（MB），超过则回落小一档；范围 0.5–20。默认=上限，即不设限制。仅 base64 路径生效 |
-| `public_base_url` | string | 空 | Worker 公开地址（如 `https://bot.example.com`）。填了就走 URL 直传，可绕开 CPU 上限 |
+| `public_base_url` | string | 空 | Worker 公开地址（如 `https://bot.example.com`），走 URL 直传，可绕开 CPU 上限。留空时用机器人自己的公开地址（QFlareBot 0.4 起），一般不用填 |
 | `show_buttons` | bool | `true` | 在文本消息下方挂内嵌按钮（`再来一张` 等）。需要 bot 侧开通按钮权限 |
 | `message_order` | enum | `text_first` | 文本与图片的先后：`text_first` / `image_first` |
 
@@ -31,8 +31,8 @@ v1.5.0 起 `random` / `illust` 声明成子命令（`'pixiv random'`、`'pixiv i
 
 | 路径 | 触发条件 | 插件侧 CPU | 体积上限 |
 | --- | --- | --- | --- |
-| **URL 直传**（推荐） | 配了 `public_base_url` | ≈ 0 | 20 MB（QQ 侧软限制，超了会降级成文件卡片） |
-| base64 直传 | `public_base_url` 留空 | ≈ 2.5 ms/MB 原图 | 约 3 MB（Free 套餐 CPU 上限所致） |
+| **URL 直传**（推荐） | 有公开地址：`public_base_url`，或 QFlareBot 0.4 起机器人自己的 | ≈ 0 | 20 MB（QQ 侧软限制，超了会降级成文件卡片） |
+| base64 直传 | 没有公开地址（0.4 以前的机器人没填 `public_base_url`、本地调试），或 URL 直传失败时的回退 | ≈ 2.5 ms/MB 原图 | 约 3 MB（Free 套餐 CPU 上限所致） |
 
 - 默认尺寸 `regular`（master1200 jpg，通常 1–3MB）。
 - 每次发送都会检查结果，失败原因写入 Worker 日志（`wrangler tail` 可见）。
@@ -92,7 +92,7 @@ v1.0.0 曾经把图床直链直接交给 QQ，失败得很惨——因为 yuki.s
 
 插件全程**不下载、不编码、不序列化**，CPU 开销接近零。base64 路径上的约 3 MB CPU 天花板随之消失，改为受平台自己的规则约束（图片 20 MB 软限制）。
 
-**开启方式**：面板配置 `public_base_url` 填 Worker 的公开地址（如 `https://bot.example.com`），插件会在其下拼接 `/p/pixiv/img`。只接受 `https`（Workers 与自定义域名本来就只有 https），填 `http` 会被当作未配置处理；多余路径会被裁掉，只取 origin。
+**开启方式**：QFlareBot 0.4 起默认就开着：插件用机器人自己的公开地址（设置页「机器人公开地址」填的，没填就是 QQ 推送消息用的那个域名），在其下拼接 `/p/pixiv/img`。更老的机器人要在插件配置 `public_base_url` 填 Worker 的公开地址（如 `https://bot.example.com`）；0.4 起填了它就以它为准。只接受 `https`（Workers 与自定义域名本来就只有 https），填 `http` 会被当作未配置处理；多余路径会被裁掉，只取 origin。
 
 ### 失败会怎样
 
@@ -101,7 +101,7 @@ v1.0.0 曾经把图床直链直接交给 QQ，失败得很惨——因为 yuki.s
 - 上传调用返回非 2xx 或缺 `file_info` → 运行时把它转成 `{ ok: false, error }`；
 - 插件收到后**自动回退 base64 直传**，并在日志里留下 `URL 直传失败，回退 base64（多为平台拉不到该域名）`。
 
-也就是说最坏情况是退回旧的 base64 路径（重新受 `max_image_mb` 约束），而不是收不到图。`workers.dev` 在国内可达性不稳，若日志反复出现这条 warn，建议换自定义域名；换不了就清空 `public_base_url`，行为与 v1.2.0 完全一致。
+也就是说最坏情况是退回旧的 base64 路径（重新受 `max_image_mb` 约束），而不是收不到图。`workers.dev` 在国内可达性不稳，若日志反复出现这条 warn，建议换自定义域名，把它填进 `public_base_url` 或机器人设置里的「机器人公开地址」。
 
 > 例外：**频道（guild）场景**没有 `/files` 端点，图片走消息体的 `image` 字段，那条路才是异步静默的。本插件主要面向群聊与单聊，不受影响。
 

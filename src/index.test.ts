@@ -53,11 +53,13 @@ function oversizeResponse(bytes = 3 * 1024 * 1024) {
  * 按用户在 /pixiv 后面打的字触发，路由与运行时一致：第一个词对得上子命令就进 `pixiv <词>`，
  * 参数从它后面开始；对不上就落到 `pixiv`
  */
-function run(text: string, config?: Partial<PluginConfig>) {
+function run(text: string, config?: Partial<PluginConfig>, publicUrl?: string) {
   const [first = '', ...rest] = text.trim().split(/\s+/)
   const sub = `pixiv ${first.toLowerCase()}`
   const hit = first !== '' && sub in (plugin.commands ?? {})
-  return runCommand(plugin, hit ? sub : 'pixiv', hit ? rest.join(' ') : text, { ctx: { config: { ...CONFIG, ...config } } })
+  return runCommand(plugin, hit ? sub : 'pixiv', hit ? rest.join(' ') : text, {
+    ctx: { config: { ...CONFIG, ...config }, ...(publicUrl ? { publicUrl } : {}) },
+  })
 }
 
 /** 直接调 /pixiv random 的处理器，用来替换 session.reply 观察发送过程 */
@@ -394,6 +396,19 @@ describe('pixiv plugin', () => {
       image: { url: `https://bot.example.com/p/pixiv/img?src=${encodeURIComponent(REGULAR_URL)}` },
     })
     expect(fetchMock).toHaveBeenCalledTimes(1) // 只有 API 调用，图片交给 QQ 自己拉
+  })
+
+  it('没填 public_base_url 时用机器人的公开地址（ctx.publicUrl）走 URL 直传；填了的优先', async () => {
+    // 每次给一个新的 Response：同一个的响应体只能读一次
+    const fetchMock = vi.fn(async () => jsonResponse({ success: true, data: ILLUST }))
+    vi.stubGlobal('fetch', fetchMock)
+    const src = encodeURIComponent(REGULAR_URL)
+
+    const auto = await run('random', {}, 'https://bot.qflare.test')
+    expect(auto.replies[1]).toEqual({ image: { url: `https://bot.qflare.test/p/pixiv/img?src=${src}` } })
+    const explicit = await run('random', { public_base_url: 'https://bot.example.com' }, 'https://bot.qflare.test')
+    expect(explicit.replies[1]).toEqual({ image: { url: `https://bot.example.com/p/pixiv/img?src=${src}` } })
+    expect(fetchMock).toHaveBeenCalledTimes(2) // 两次都只有 API 调用，图片交给 QQ 自己拉
   })
 
   it('public_base_url 归一化为纯 origin，容忍尾斜杠与误粘的路径', async () => {

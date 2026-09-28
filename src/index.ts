@@ -350,12 +350,14 @@ const HELP =
   '/pixiv illust [作品id]'
 
 /** random 与 illust 共用、只取决于配置的发送参数；尺寸、信息详略与按钮由各子命令自己定 */
-function sendSettings(ctx: { config: PluginConfig; logger: ReplyLogger }, session: { reply: ReplyFn }) {
+function sendSettings(ctx: { config: PluginConfig; logger: ReplyLogger; publicUrl?: string }, session: { reply: ReplyFn }) {
   return {
     session,
     logger: ctx.logger,
     maxBytes: resolveMaxBytes(ctx.config.max_image_mb),
-    publicBaseUrl: resolvePublicBaseUrl(ctx.config.public_base_url),
+    // 插件配置没填时用机器人的公开地址（QFlareBot 0.4 起的 ctx.publicUrl：设置里填的，或 QQ 推送事件用的域名）；
+    // 都没有才走 base64。平台拉不到时照旧自动回退 base64
+    publicBaseUrl: resolvePublicBaseUrl(ctx.config.public_base_url) || resolvePublicBaseUrl(ctx.publicUrl),
     order: resolveOrder(ctx.config.message_order),
   }
 }
@@ -480,6 +482,8 @@ async function sendIllust(illust: Illust, opts: SendOpts): Promise<string | unde
 
 export default definePlugin<PluginConfig>({
   name: 'pixiv',
+  // 没用到契约 2 的 ctx.db.batch()，写 1 让 0.4 以前的机器人也能装（不写就是构建时 SDK 的版本）
+  apiVersion: 1,
   displayName: 'Pixiv 图床',
   description: '随机获取 Pixiv 美图、按作品 ID 查询详情（pixiv.yuki.sh 第三方图床）',
   permissions: ['net'],
@@ -509,7 +513,7 @@ export default definePlugin<PluginConfig>({
         title: 'Worker 公开地址（走 URL 直传，可绕开 CPU 上限）',
         default: '',
         description:
-          '填 Worker 的公开访问地址（如 https://bot.example.com），图片改由平台自己来拉，插件侧 CPU 归零、不受体积上限约束。留空则回退 base64 直传。只接受 https。填了之后建议实测一张：若平台拉不到该域名（workers.dev 在国内可达性不稳），本条会自动回退 base64 并在日志留下 warn，不会静默丢图',
+          '填 Worker 的公开访问地址（如 https://bot.example.com），图片改由平台自己来拉，插件侧 CPU 归零、不受体积上限约束。一般不用填：留空时用机器人设置里的公开地址（QFlareBot 0.4 起；没填那边就用 QQ 推送消息用的域名），都没有才回退 base64 直传。只接受 https。若平台拉不到该域名（workers.dev 在国内可达性不稳），本条会自动回退 base64 并在日志留下 warn，不会静默丢图',
       },
       show_buttons: {
         type: 'boolean',
